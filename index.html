@@ -1,0 +1,548 @@
+<meta charset="utf-8">
+<title>KiCad Pocket Viewer</title>
+<meta name="apple-mobile-web-app-capable" content="yes">
+<style>
+:root{
+  --bg:#1c2027; --bg2:#262b34; --line:#343a45; --fg:#e6e8ec; --fg2:#9aa3b2;
+  --accent:#4fb3ff; --pcb-canvas:#14171c; --sch-canvas:#f7f6f1;
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0;background:var(--bg);color:var(--fg);
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Noto Sans KR",sans-serif;font-size:14px;
+  overscroll-behavior:none;-webkit-user-select:none;user-select:none}
+#app{display:flex;flex-direction:column;height:100%;height:100dvh}
+header{display:flex;align-items:center;gap:8px;padding:6px 10px;background:var(--bg2);border-bottom:1px solid var(--line);flex:0 0 auto}
+header h1{font-size:15px;font-weight:600;margin:0 6px 0 0;white-space:nowrap;letter-spacing:.01em}
+button,label.btn{background:var(--bg);color:var(--fg);border:1px solid var(--line);border-radius:6px;padding:6px 11px;font:inherit;cursor:pointer;white-space:nowrap}
+button:active,label.btn:active{background:var(--line)}
+button.on{border-color:var(--accent);color:var(--accent)}
+button:focus-visible,label.btn:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+#tabs{display:flex;gap:4px;overflow-x:auto;flex:1 1 auto;scrollbar-width:none}
+#tabs::-webkit-scrollbar{display:none}
+#tabs button{border-radius:999px;padding:5px 12px;color:var(--fg2)}
+#tabs button.on{background:var(--bg);color:var(--accent)}
+#tabs button.pcb::before{content:"PCB ";font-size:10px;letter-spacing:.08em;opacity:.7}
+#tabs button.sch::before{content:"SCH ";font-size:10px;letter-spacing:.08em;opacity:.7}
+main{position:relative;flex:1 1 auto;min-height:0;overflow:hidden;touch-action:none}
+svg#view{width:100%;height:100%;display:block;background:var(--pcb-canvas)}
+svg#view.sch{background:var(--sch-canvas)}
+#empty{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;color:var(--fg2);text-align:center;padding:24px;pointer-events:none}
+#empty p{max-width:34ch;line-height:1.5;margin:0}
+#empty strong{color:var(--fg)}
+#panel{position:absolute;top:8px;right:8px;max-height:calc(100% - 16px);overflow:auto;background:rgba(38,43,52,.94);backdrop-filter:blur(8px);border:1px solid var(--line);border-radius:10px;padding:8px 10px;min-width:170px;display:none}
+#panel.open{display:block}
+#panel h2{font-size:11px;text-transform:uppercase;letter-spacing:.1em;color:var(--fg2);margin:4px 0 6px;font-weight:600}
+#panel label{display:flex;align-items:center;gap:8px;padding:5px 2px;cursor:pointer;font-size:13px}
+#panel label i{width:12px;height:12px;border-radius:3px;flex:0 0 auto;border:1px solid rgba(255,255,255,.15)}
+#panel input{accent-color:var(--accent);margin:0}
+#panel .row{display:flex;gap:6px;margin:4px 0 8px}
+#panel .row button{flex:1;padding:4px 6px;font-size:12px}
+footer{display:flex;align-items:center;gap:10px;padding:5px 10px;background:var(--bg2);border-top:1px solid var(--line);font-size:12px;color:var(--fg2);flex:0 0 auto;min-height:28px}
+footer #status{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-variant-numeric:tabular-nums}
+footer #status b{color:var(--fg);font-weight:600}
+#drop{position:absolute;inset:0;border:2px dashed var(--accent);background:rgba(79,179,255,.08);display:none;pointer-events:none}
+main.drag #drop{display:block}
+#busy{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);background:var(--bg2);border:1px solid var(--line);padding:12px 18px;border-radius:8px;display:none}
+/* SVG element styles */
+.hl{filter:drop-shadow(0 0 1.2px #fff) brightness(1.6)}
+.dim{opacity:.35}
+text{font-family:Helvetica,Arial,"Noto Sans KR",sans-serif;pointer-events:none}
+.sch-sym rect,.sch-sym polygon,.sch-sym polyline,.sch-sym circle,.sch-sym path{vector-effect:none}
+#view .clickable{cursor:pointer}
+@media (max-width:600px){header h1{display:none}}
+</style>
+
+<div id="app">
+<header>
+  <h1>KiCad Pocket Viewer</h1>
+  <label class="btn" for="file">파일 열기</label>
+  <input id="file" type="file" multiple accept=".kicad_pcb,.kicad_sch,.txt" hidden>
+  <div id="tabs"></div>
+  <button id="fit" title="화면 맞춤">맞춤</button>
+  <button id="flipBtn" title="보드 뒤집기" hidden>뒤집기</button>
+  <button id="layersBtn" hidden>레이어</button>
+</header>
+<main id="main">
+  <svg id="view" xmlns="http://www.w3.org/2000/svg"></svg>
+  <div id="empty">
+    <p><strong>파일 열기</strong>를 눌러 <code>.kicad_sch</code> 또는 <code>.kicad_pcb</code> 파일을 선택하세요.<br>여러 파일을 한 번에 선택하면 탭으로 열립니다.</p>
+    <p>iPhone / iPad: 파일 앱(iCloud Drive 등)에서 선택. 한 손가락 이동, 두 손가락 확대. 패드·배선을 탭하면 net 이름이, 심볼을 탭하면 부품 정보가 아래에 표시됩니다.</p>
+  </div>
+  <div id="panel"></div>
+  <div id="drop"></div>
+  <div id="busy">읽는 중…</div>
+</main>
+<footer><span id="status">파일이 열려 있지 않습니다</span><span id="zoom"></span></footer>
+</div>
+
+<script>
+'use strict';
+/* ---------------- S-expression parser ---------------- */
+function parseSexp(text){
+  let i=0;const n=text.length;
+  function node(){
+    i++;const list=[];
+    while(i<n){
+      const c=text.charCodeAt(i);
+      if(c===40){list.push(node());}
+      else if(c===41){i++;return list;}
+      else if(c<=32){i++;}
+      else if(c===34){
+        let j=i+1,s='';
+        while(j<n){const d=text[j];if(d==='\\'){s+=text[j+1];j+=2;}else if(d==='"'){break;}else{s+=d;j++;}}
+        list.push(s);i=j+1;
+      }else{
+        let j=i;
+        while(j<n){const d=text.charCodeAt(j);if(d===40||d===41||d<=32)break;j++;}
+        list.push(text.slice(i,j));i=j;
+      }
+    }
+    return list;
+  }
+  while(i<n&&text[i]!=='(')i++;
+  return node();
+}
+const ch=(node,name)=>{for(let k=1;k<node.length;k++){const c=node[k];if(Array.isArray(c)&&c[0]===name)return c;}return null;};
+const chs=(node,name)=>{const r=[];for(let k=1;k<node.length;k++){const c=node[k];if(Array.isArray(c)&&c[0]===name)r.push(c);}return r;};
+const N=v=>{const f=parseFloat(v);return isNaN(f)?0:f;};
+const at=node=>{const a=ch(node,'at');return a?{x:N(a[1]),y:N(a[2]),r:N(a[3])}:{x:0,y:0,r:0};};
+const pts=node=>{const p=ch(node,'pts');return p?chs(p,'xy').map(q=>[N(q[1]),N(q[2])]):[];};
+const strokeW=(node,def)=>{const s=ch(node,'stroke');if(s){const w=ch(s,'width');if(w)return N(w[1])||def;}const w=ch(node,'width');return w?N(w[1]):def;};
+const isFilled=node=>{const f=ch(node,'fill');if(!f)return false;const v=f[1];if(v==='yes'||v==='solid')return true;if(Array.isArray(v)&&v[0]==='type')return v[1]!=='none';return false;};
+const esc=s=>String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+const f3=v=>(Math.round(v*1000)/1000).toString();
+const fontOf=node=>{const e=ch(node,'effects');let size=1.27,thick=0,hide=false,just=[];if(e){const f=ch(e,'font');if(f){const s=ch(f,'size');if(s){size=N(s[1]);}const t=ch(f,'thickness');if(t)thick=N(t[1]);}const j=ch(e,'justify');if(j)just=j.slice(1);if(e.includes('hide'))hide=true;const h=ch(e,'hide');if(h&&h[1]==='yes')hide=true;}return{size,thick,hide,just};};
+function arcPoints(sx,sy,mx,my,ex,ey,segs){
+  // circle through 3 points
+  const ax=sx,ay=sy,bx=mx,by=my,cx=ex,cy=ey;
+  const d=2*(ax*(by-cy)+bx*(cy-ay)+cx*(ay-by));
+  if(Math.abs(d)<1e-9)return[[sx,sy],[ex,ey]];
+  const ux=((ax*ax+ay*ay)*(by-cy)+(bx*bx+by*by)*(cy-ay)+(cx*cx+cy*cy)*(ay-by))/d;
+  const uy=((ax*ax+ay*ay)*(cx-bx)+(bx*bx+by*by)*(ax-cx)+(cx*cx+cy*cy)*(bx-ax))/d;
+  const r=Math.hypot(ax-ux,ay-uy);
+  let a0=Math.atan2(ay-uy,ax-ux),a1=Math.atan2(by-uy,bx-ux),a2=Math.atan2(cy-uy,cx-ux);
+  // sweep from a0 through a1 to a2
+  const norm=a=>{while(a<0)a+=Math.PI*2;while(a>=Math.PI*2)a-=Math.PI*2;return a;};
+  let d1=norm(a1-a0),d2=norm(a2-a0);
+  let sweep;
+  if(d1<d2)sweep=d2;else sweep=d2-Math.PI*2;
+  segs=segs||Math.max(6,Math.ceil(Math.abs(sweep)*r*4)|0);
+  segs=Math.min(segs,96);
+  const out=[];
+  for(let k=0;k<=segs;k++){const a=a0+sweep*k/segs;out.push([ux+r*Math.cos(a),uy+r*Math.sin(a)]);}
+  return out;
+}
+const poly=p=>p.map(q=>f3(q[0])+','+f3(q[1])).join(' ');
+
+/* ---------------- text ---------------- */
+// KiCad text: size = glyph height; anchor by justify. angle: CCW degrees (y-down screen)
+function textSvg(str,x,y,size,angle,just,extra,mirror){
+  if(!str)return'';
+  angle=((angle%360)+360)%360;
+  let h=just.includes('left')?'start':just.includes('right')?'end':'middle';
+  let v=just.includes('top')?'top':just.includes('bottom')?'bottom':'middle';
+  if(angle===180||angle===270){angle-=180;if(h==='start')h='end';else if(h==='end')h='start';if(v==='top')v='bottom';else if(v==='bottom')v='top';}
+  const lines=String(str).split('\\n');
+  const lh=size*1.55;
+  const fs=size*1.3;
+  let y0;
+  if(v==='top')y0=size;else if(v==='bottom')y0=-(lines.length-1)*lh;else y0=size/2-(lines.length-1)*lh/2;
+  let tr=`translate(${f3(x)} ${f3(y)})`;
+  if(angle)tr+=` rotate(${-angle})`;
+  if(mirror)tr+=' scale(-1 1)';
+  let s=`<text transform="${tr}" font-size="${f3(fs)}" text-anchor="${h}" ${extra||''}>`;
+  lines.forEach((l,i)=>{s+=`<tspan x="0" y="${f3(y0+i*lh)}">${esc(l)}</tspan>`;});
+  return s+'</text>';
+}
+
+/* ---------------- PCB ---------------- */
+const LAYER_COLORS={
+  'F.Cu':'#c83434','B.Cu':'#4d7fc4','In1.Cu':'#7fc87f','In2.Cu':'#ce7e00','In3.Cu':'#4fcbcb','In4.Cu':'#dbd34c',
+  'In5.Cu':'#8b2323','In6.Cu':'#8b7355','In7.Cu':'#4a8ddb','In8.Cu':'#a24ad1','In9.Cu':'#5fa15f','In10.Cu':'#c3b400',
+  'F.SilkS':'#f2f2f2','B.SilkS':'#e8b2a7','F.Mask':'#d864ff','B.Mask':'#02ffee','F.Paste':'#b4b4b4','B.Paste':'#00c8b4',
+  'F.Fab':'#afafaf','B.Fab':'#585d84','F.CrtYd':'#ff26e2','B.CrtYd':'#26e9ff','F.Adhes':'#b432b4','B.Adhes':'#0000c8',
+  'Edge.Cuts':'#d0d2cd','Margin':'#ff26e2','Dwgs.User':'#c2c200','Cmts.User':'#5959d9','Eco1.User':'#84cc00','Eco2.User':'#d600d6',
+  'User.1':'#c2c200','User.2':'#89d7a3','User.3':'#e4d6a3','User.4':'#a3c2e4',
+  'Pads.TH':'#e8c34a','Vias':'#d4c25a'
+};
+const DEFAULT_HIDDEN=/\.(Mask|Paste|Fab|CrtYd|Adhes)$|^User\.|^Eco|^Margin$/;
+function layerColor(l){return LAYER_COLORS[l]||(/Cu$/.test(l)?'#8888aa':'#cccccc');}
+
+function renderPcb(root){
+  // layer order from file
+  const layersNode=ch(root,'layers')||[];
+  const fileLayers=layersNode.slice(1).filter(Array.isArray).map(l=>({id:N(l[0]),name:l[1],type:l[2]}));
+  const cu=fileLayers.filter(l=>l.type==='signal'||l.type==='power'||l.type==='mixed'||l.type==='jumper').map(l=>l.name);
+  // remaining in file order
+  const other=fileLayers.filter(l=>!cu.includes(l.name)).map(l=>l.name);
+  const groups={};const get=l=>groups[l]||(groups[l]=[]);
+  const netOf=n=>{const t=ch(n,'net');return t?(t.length>2?t[2]:t[1]):'';};
+  const bbox={minx:Infinity,miny:Infinity,maxx:-Infinity,maxy:-Infinity},edge={minx:Infinity,miny:Infinity,maxx:-Infinity,maxy:-Infinity};
+  const grow=(b,x,y)=>{if(x<b.minx)b.minx=x;if(x>b.maxx)b.maxx=x;if(y<b.miny)b.miny=y;if(y>b.maxy)b.maxy=y;};
+
+  function graphic(n,tf,pfx,layerOverride){
+    // n: gr_*/fp_* node; returns svg string in local coords; also grows bbox via tf
+    const layer=layerOverride||(ch(n,'layer')||[])[1]||'Dwgs.User';
+    const w=strokeW(n,0.1),col=layerColor(layer),fill=isFilled(n);
+    const kind=n[0].replace(/^(gr_|fp_)/,'');
+    let s='';
+    const T=(x,y)=>{const p=tf(x,y);grow(layer==='Edge.Cuts'?edge:bbox,p[0],p[1]);};
+    if(kind==='line'){const a=ch(n,'start'),b=ch(n,'end');if(!a||!b)return;T(N(a[1]),N(a[2]));T(N(b[1]),N(b[2]));
+      s=`<line x1="${a[1]}" y1="${a[2]}" x2="${b[1]}" y2="${b[2]}" stroke="${col}" stroke-width="${f3(w||0.05)}" stroke-linecap="round"/>`;}
+    else if(kind==='rect'){const a=ch(n,'start'),b=ch(n,'end');if(!a||!b)return;const x0=Math.min(N(a[1]),N(b[1])),y0=Math.min(N(a[2]),N(b[2])),x1=Math.max(N(a[1]),N(b[1])),y1=Math.max(N(a[2]),N(b[2]));T(x0,y0);T(x1,y1);T(x0,y1);T(x1,y0);
+      s=`<rect x="${f3(x0)}" y="${f3(y0)}" width="${f3(x1-x0)}" height="${f3(y1-y0)}" stroke="${col}" stroke-width="${f3(w)}" fill="${fill?col:'none'}" stroke-linejoin="round"/>`;}
+    else if(kind==='circle'){const c=ch(n,'center'),e=ch(n,'end');if(!c||!e)return;const r=Math.hypot(N(e[1])-N(c[1]),N(e[2])-N(c[2]));T(N(c[1])-r,N(c[2])-r);T(N(c[1])+r,N(c[2])+r);
+      s=`<circle cx="${c[1]}" cy="${c[2]}" r="${f3(r)}" stroke="${col}" stroke-width="${f3(w)}" fill="${fill?col:'none'}"/>`;}
+    else if(kind==='arc'){const a=ch(n,'start'),m=ch(n,'mid'),e=ch(n,'end');if(!a||!m||!e)return;const p=arcPoints(N(a[1]),N(a[2]),N(m[1]),N(m[2]),N(e[1]),N(e[2]));p.forEach(q=>T(q[0],q[1]));
+      s=`<polyline points="${poly(p)}" stroke="${col}" stroke-width="${f3(w||0.05)}" fill="none" stroke-linecap="round" stroke-linejoin="round"/>`;}
+    else if(kind==='poly'){const p=pts(n);if(p.length<2)return;p.forEach(q=>T(q[0],q[1]));
+      s=`<polygon points="${poly(p)}" stroke="${w?col:'none'}" stroke-width="${f3(w)}" fill="${(fill||!w)?col:'none'}" stroke-linejoin="round"/>`;}
+    else if(kind==='text'||kind==='text_box'){let str=n[1];let a;
+      if(n[0]==='fp_text'){str=n[2];}
+      a=at(n);const fo=fontOf(n);if(fo.hide)return;
+      let ang=a.r;if(pfx){str=pfx.subst(str);ang=a.r-pfx.rot;}
+      const mirror=layer.startsWith('B.')||fo.just.includes('mirror');
+      s=textSvg(str,a.x,a.y,fo.size,ang,fo.just,`fill="${col}"`,mirror);}
+    else return;
+    get(layer).push(s);
+  }
+  const ident=(x,y)=>[x,y];
+  // board-level graphics
+  for(const n of root){ if(!Array.isArray(n))continue;
+    if(/^gr_(line|rect|circle|arc|poly|text)$/.test(n[0]))graphic(n,ident,null);
+  }
+  // segments / arcs / vias
+  for(const n of chs(root,'segment')){const a=ch(n,'start'),b=ch(n,'end'),l=(ch(n,'layer')||[])[1],w=N((ch(n,'width')||[])[1]);grow(bbox,N(a[1]),N(a[2]));grow(bbox,N(b[1]),N(b[2]));
+    get(l).push(`<line class="clickable" data-net="${esc(netOf(n))}" x1="${a[1]}" y1="${a[2]}" x2="${b[1]}" y2="${b[2]}" stroke="${layerColor(l)}" stroke-width="${f3(w)}" stroke-linecap="round"/>`);}
+  for(const n of chs(root,'arc')){const a=ch(n,'start'),m=ch(n,'mid'),e=ch(n,'end'),l=(ch(n,'layer')||[])[1],w=N((ch(n,'width')||[])[1]);const p=arcPoints(N(a[1]),N(a[2]),N(m[1]),N(m[2]),N(e[1]),N(e[2]));
+    get(l).push(`<polyline class="clickable" data-net="${esc(netOf(n))}" points="${poly(p)}" stroke="${layerColor(l)}" stroke-width="${f3(w)}" fill="none" stroke-linecap="round" stroke-linejoin="round"/>`);}
+  for(const n of chs(root,'via')){const a=at(n),sz=N((ch(n,'size')||[])[1]),dr=N((ch(n,'drill')||[])[1]);
+    get('Vias').push(`<g class="clickable" data-net="${esc(netOf(n))}"><circle cx="${f3(a.x)}" cy="${f3(a.y)}" r="${f3(sz/2)}" fill="${LAYER_COLORS.Vias}"/><circle cx="${f3(a.x)}" cy="${f3(a.y)}" r="${f3(dr/2)}" fill="#14171c"/></g>`);}
+  // zones
+  for(const n of chs(root,'zone')){const net=netOf(n);
+    for(const fp of chs(n,'filled_polygon')){const l=(ch(fp,'layer')||[])[1];const p=pts(fp);if(p.length<3)continue;
+      get(l).unshift(`<polygon class="zone clickable" data-net="${esc(net)}" points="${poly(p)}" fill="${layerColor(l)}" fill-opacity="0.55" stroke="none"/>`);}
+  }
+  // footprints
+  let fpCount=0;
+  for(const fpn of chs(root,'footprint')){fpCount++;
+    const a=at(fpn),cos=Math.cos(-a.r*Math.PI/180),sin=Math.sin(-a.r*Math.PI/180);
+    const tf=(x,y)=>[a.x+x*cos-y*sin,a.y+x*sin+y*cos];
+    const props={};for(const p of chs(fpn,'property'))props[p[1]]=p[2];
+    const ref=props.Reference||'',val=props.Value||'';
+    const ctx={rot:a.r,subst:s=>String(s).replace(/\$\{REFERENCE\}/g,ref).replace(/\$\{VALUE\}/g,val).replace(/\$\{FOOTPRINT_NAME\}/g,fpn[1]||'')};
+    const wrap=`<g transform="translate(${f3(a.x)} ${f3(a.y)}) rotate(${-a.r})">`;
+    const local={};const lget=l=>local[l]||(local[l]=[]);
+    const saveGet=get;
+    // temporarily capture into local
+    const localGet=l=>lget(l);
+    const gOrig=groups;
+    for(const n of fpn){ if(!Array.isArray(n))continue;
+      if(/^fp_(line|rect|circle|arc|poly|text)$/.test(n[0])){ const tmp=[];const layer=(ch(n,'layer')||[])[1]||'Dwgs.User';
+        // reuse graphic with custom sink
+        const before=(groups[layer]||[]).length;graphic(n,tf,ctx);const arr=groups[layer];if(arr&&arr.length>before){lget(layer).push(arr.pop());}
+      } else if(n[0]==='property'){ if(!ch(n,'layer'))continue;
+        const fo=fontOf(n);if(fo.hide)continue;const h=ch(n,'hide');if(h&&h[1]==='yes')continue;
+        const layer=(ch(n,'layer')||[])[1];const pa=at(n);const mirror=layer.startsWith('B.');
+        lget(layer).push(textSvg(n[2],pa.x,pa.y,fo.size,pa.r-a.r,fo.just,`fill="${layerColor(layer)}"`,mirror));
+      } else if(n[0]==='pad'){
+        const name=n[1],type=n[2],shape=n[3],pa=at(n),sz=ch(n,'size'),w=N(sz[1]),h=N(sz[2]);
+        const layers=(ch(n,'layers')||[]).slice(1);const net=netOf(n);
+        const isTH=type==='thru_hole'||type==='np_thru_hole';
+        let layer=isTH?'Pads.TH':(layers.find(l=>/\.Cu$/.test(l))||layers[0]||'F.Cu');
+        if(!isTH&&layers.some(l=>l==='*.Cu'))layer='Pads.TH';
+        const col=layerColor(layer);
+        let sh='';const rr=ch(n,'roundrect_rratio');const rad=rr?N(rr[1])*Math.min(w,h):0;
+        if(shape==='circle')sh=`<circle r="${f3(w/2)}" fill="${col}"/>`;
+        else if(shape==='oval')sh=`<rect x="${f3(-w/2)}" y="${f3(-h/2)}" width="${f3(w)}" height="${f3(h)}" rx="${f3(Math.min(w,h)/2)}" fill="${col}"/>`;
+        else if(shape==='custom'){sh=`<circle r="${f3(Math.min(w,h)/2)}" fill="${col}"/>`;const pr=ch(n,'primitives');if(pr)for(const g of pr.slice(1)){if(!Array.isArray(g))continue;if(g[0]==='gr_poly'){sh+=`<polygon points="${poly(pts(g))}" fill="${col}"/>`;}else if(g[0]==='gr_circle'){const c=ch(g,'center'),e=ch(g,'end');sh+=`<circle cx="${c[1]}" cy="${c[2]}" r="${f3(Math.hypot(N(e[1])-N(c[1]),N(e[2])-N(c[2])))}" fill="${col}"/>`;}else if(g[0]==='gr_line'){const s0=ch(g,'start'),e=ch(g,'end');sh+=`<line x1="${s0[1]}" y1="${s0[2]}" x2="${e[1]}" y2="${e[2]}" stroke="${col}" stroke-width="${f3(strokeW(g,0.1))}" stroke-linecap="round"/>`;}else if(g[0]==='gr_rect'){const s0=ch(g,'start'),e=ch(g,'end');sh+=`<rect x="${f3(Math.min(N(s0[1]),N(e[1])))}" y="${f3(Math.min(N(s0[2]),N(e[2])))}" width="${f3(Math.abs(N(e[1])-N(s0[1])))}" height="${f3(Math.abs(N(e[2])-N(s0[2])))}" fill="${col}"/>`;}}}
+        else sh=`<rect x="${f3(-w/2)}" y="${f3(-h/2)}" width="${f3(w)}" height="${f3(h)}" rx="${f3(rad)}" fill="${col}"/>`;
+        const dr=ch(n,'drill');let hole='';
+        if(dr){let dx=0,dy=0;const off=ch(dr,'offset');if(off){dx=N(off[1]);dy=N(off[2]);}
+          if(dr[1]==='oval'){const dw=N(dr[2]),dh=N(dr[3]);hole=`<rect x="${f3(dx-dw/2)}" y="${f3(dy-dh/2)}" width="${f3(dw)}" height="${f3(dh)}" rx="${f3(Math.min(dw,dh)/2)}" fill="#14171c"/>`;}
+          else{const d=N(dr[1]);if(d>0)hole=`<circle cx="${f3(dx)}" cy="${f3(dy)}" r="${f3(d/2)}" fill="#14171c"/>`;}}
+        if(type==='np_thru_hole')sh='';
+        const off=ch(n,'offset');const ox=off?N(off[1]):0,oy=off?N(off[2]):0;
+        const label=(w>0.35&&h>0.35&&name&&name!=='""')?`<text font-size="${f3(Math.min(w,h)*0.6)}" text-anchor="middle" dominant-baseline="central" fill="#000" fill-opacity="0.55" transform="rotate(${f3(pa.r)})${layer.startsWith('B.')?' scale(-1 1)':''}">${esc(name)}</text>`:'';
+        lget(layer).push(`<g class="clickable pad" data-net="${esc(net)}" data-ref="${esc(ref)}" data-pad="${esc(name)}" transform="translate(${f3(pa.x)} ${f3(pa.y)}) rotate(${-(pa.r-a.r)})"><g transform="translate(${f3(ox)} ${f3(oy)})">${sh}</g>${hole}${label}</g>`);
+        const P=tf(pa.x,pa.y);grow(bbox,P[0]-w,P[1]-w);grow(bbox,P[0]+w,P[1]+w);
+      }
+    }
+    for(const l in local){get(l).push(`${wrap.replace('<g ',`<g class="fp" data-ref="${esc(ref)}" data-val="${esc(val)}" data-fp="${esc(fpn[1]||'')}" `)}${local[l].join('')}</g>`);}
+  }
+  const bb=(isFinite(edge.minx)?edge:bbox);
+  const allLayers=Object.keys(groups);
+  // order: back → inner (reverse) → front → tech → edge → vias/th
+  const cuOrder=cu.slice();
+  const backSide=['B.Fab','B.CrtYd','B.Adhes','B.Paste','B.Mask','B.SilkS'];
+  const frontSide=['F.Mask','F.Paste','F.SilkS','F.Fab','F.CrtYd','F.Adhes'];
+  const rest=allLayers.filter(l=>!cuOrder.includes(l)&&!backSide.includes(l)&&!frontSide.includes(l)&&l!=='Edge.Cuts'&&l!=='Vias'&&l!=='Pads.TH');
+  const order=[...backSide,...cuOrder.slice().reverse(),...frontSide,...rest,'Edge.Cuts','Vias','Pads.TH'].filter(l=>groups[l]);
+  const flipped=[...frontSide.slice().reverse(),...cuOrder,...backSide.slice().reverse(),...rest,'Edge.Cuts','Vias','Pads.TH'].filter(l=>groups[l]);
+  return {kind:'pcb',groups,order,flipped,bbox:bb,layers:order.filter(l=>l!=='Vias'&&l!=='Pads.TH').concat(['Vias','Pads.TH'].filter(l=>groups[l])),
+    summary:`${fpCount} footprints · ${chs(root,'segment').length} tracks · ${chs(root,'via').length} vias`};
+}
+
+/* ---------------- Schematic ---------------- */
+const SCH={wire:'#0f5f9c',bus:'#0000a0',body:'#8b1a1a',bodyfill:'#fff7c2',pin:'#8b1a1a',label:'#0f5f9c',glabel:'#8b0000',hlabel:'#6b4c00',text:'#2b2b2b',ref:'#8b1a1a',val:'#1f5f1f',sheet:'#6b1f6b',sheetfill:'#f3e8f3',junction:'#0f5f9c',nc:'#0000a0',frame:'#b9463e'};
+const PAPER={A0:[1189,841],A1:[841,594],A2:[594,420],A3:[420,297],A4:[297,210],A5:[210,148],A:[279.4,215.9],B:[431.8,279.4],C:[558.8,431.8],D:[863.6,558.8],E:[1117.6,863.6],USLetter:[279.4,215.9],USLegal:[355.6,215.9],USLedger:[431.8,279.4]};
+
+function libGraphics(sym,unit,out,pinInfo){
+  // sym: lib symbol node. Collect drawing primitives from sub-symbols of matching unit (or 0), style 1
+  const subs=chs(sym,'symbol');
+  const pinNamesHide=(()=>{const p=ch(sym,'pin_names');if(!p)return false;if(p.includes('hide'))return true;const h=ch(p,'hide');return !!(h&&h[1]==='yes');})();
+  const pinNumsHide=(()=>{const p=ch(sym,'pin_numbers');if(!p)return false;if(p.includes('hide'))return true;const h=ch(p,'hide');return !!(h&&h[1]==='yes');})();
+  const pinOff=(()=>{const p=ch(sym,'pin_names');const o=p&&ch(p,'offset');return o?N(o[1]):0.508;})();
+  const draw=node=>{
+    for(const n of node){ if(!Array.isArray(n))continue;
+      const k=n[0];const w=strokeW(n,0.1524)||0.1524;
+      const f=ch(n,'fill');const ft=f?(ch(f,'type')||[])[1]:'none';const fill=ft==='background'?SCH.bodyfill:ft==='outline'?SCH.body:'none';
+      if(k==='polyline'){const p=pts(n);const closed=p.length>2&&p[0][0]===p[p.length-1][0]&&p[0][1]===p[p.length-1][1];
+        out.push(`<${(fill!=='none'||closed)?'polygon':'polyline'} points="${poly(p.map(q=>[q[0],-q[1]]))}" stroke="${SCH.body}" stroke-width="${f3(w)}" fill="${fill}" stroke-linecap="round" stroke-linejoin="round"/>`);}
+      else if(k==='rectangle'){const a=ch(n,'start'),b=ch(n,'end');const x0=Math.min(N(a[1]),N(b[1])),x1=Math.max(N(a[1]),N(b[1])),y0=Math.min(-N(a[2]),-N(b[2])),y1=Math.max(-N(a[2]),-N(b[2]));
+        out.push(`<rect x="${f3(x0)}" y="${f3(y0)}" width="${f3(x1-x0)}" height="${f3(y1-y0)}" stroke="${SCH.body}" stroke-width="${f3(w)}" fill="${fill}"/>`);}
+      else if(k==='circle'){const c=ch(n,'center'),r=N((ch(n,'radius')||[])[1]);out.push(`<circle cx="${c[1]}" cy="${f3(-N(c[2]))}" r="${f3(r)}" stroke="${SCH.body}" stroke-width="${f3(w)}" fill="${fill}"/>`);}
+      else if(k==='arc'){const a=ch(n,'start'),m=ch(n,'mid'),e=ch(n,'end');const p=arcPoints(N(a[1]),-N(a[2]),N(m[1]),-N(m[2]),N(e[1]),-N(e[2]));
+        out.push(`<polyline points="${poly(p)}" stroke="${SCH.body}" stroke-width="${f3(w)}" fill="${fill}" stroke-linecap="round"/>`);}
+      else if(k==='bezier'){const p=pts(n);if(p.length>=4)out.push(`<path d="M${f3(p[0][0])} ${f3(-p[0][1])} C${f3(p[1][0])} ${f3(-p[1][1])} ${f3(p[2][0])} ${f3(-p[2][1])} ${f3(p[3][0])} ${f3(-p[3][1])}" stroke="${SCH.body}" stroke-width="${f3(w)}" fill="${fill}"/>`);}
+      else if(k==='text'){const a=at(n);const fo=fontOf(n);out.push(textSvg(n[1],a.x,-a.y,fo.size,a.r,fo.just,`fill="${SCH.text}"`));}
+      else if(k==='pin'){
+        const a=at(n),len=N((ch(n,'length')||[])[1]),style=n[2],etype=n[1];
+        const hide=n.includes('hide')||(ch(n,'hide')||[])[1]==='yes';
+        const th=a.r*Math.PI/180,ex=a.x+len*Math.cos(th),ey=a.y+len*Math.sin(th);
+        const nameN=ch(n,'name'),numN=ch(n,'number');
+        pinInfo.push({x:a.x,y:-a.y,name:nameN?nameN[1]:'',num:numN?numN[1]:'',etype});
+        if(hide)continue;
+        out.push(`<line x1="${f3(a.x)}" y1="${f3(-a.y)}" x2="${f3(ex)}" y2="${f3(-ey)}" stroke="${SCH.pin}" stroke-width="0.1524"/>`);
+        if(style==='inverted'||style==='inverted_clock'){const r=0.635;out.push(`<circle cx="${f3(ex-r*Math.cos(th))}" cy="${f3(-(ey-r*Math.sin(th)))}" r="${f3(r)}" stroke="${SCH.pin}" stroke-width="0.1524" fill="none"/>`);}
+        if(style==='clock'||style==='inverted_clock'){const px=Math.cos(th),py=Math.sin(th);const s=0.635;const q=[[ex+s*(-py),ey+s*px],[ex+s*px*1.5,ey+s*py*1.5],[ex-s*(-py),ey-s*px]];out.push(`<polyline points="${poly(q.map(v=>[v[0],-v[1]]))}" stroke="${SCH.pin}" stroke-width="0.1524" fill="none"/>`);}
+        // orientation for text: rot 0 = pin points right (from body end to the left). Name sits inside body (beyond end), number above the pin
+        const nm=nameN?nameN[1]:'',num=numN?numN[1]:'';
+        const fo=nameN?fontOf(nameN):{size:1.27},fo2=numN?fontOf(numN):{size:1.27};
+        const r=((a.r%360)+360)%360;
+        if(!pinNamesHide&&nm&&nm!=='~'){
+          const dx=(pinOff)*Math.cos(th),dy=(pinOff)*Math.sin(th);
+          const px=ex+dx,py=ey+dy;
+          let just,ang=0;
+          if(r===0){just=['left'];}else if(r===180){just=['right'];}else if(r===90){just=['left'];ang=90;}else{just=['right'];ang=90;}
+          if(pinOff===0){ // names outside, above pin
+            const mx=(a.x+ex)/2,my=(a.y+ey)/2;
+            out.push(textSvg(nm,mx,-my-0.5*(r===90||r===270?0:1),fo.size,r===90||r===270?90:0,r===90||r===270?['bottom']:['bottom'],`fill="${SCH.text}"`));
+          } else out.push(textSvg(nm,px,-py,fo.size,ang,just,`fill="${SCH.text}"`));
+        }
+        if(!pinNumsHide&&num){
+          const mx=(a.x+ex)/2,my=(a.y+ey)/2;
+          if(r===0||r===180)out.push(textSvg(num,mx,-my-0.35,fo2.size*0.9,0,['bottom'],`fill="${SCH.text}"`));
+          else out.push(textSvg(num,mx-0.35,-my,fo2.size*0.9,90,['bottom'],`fill="${SCH.text}"`));
+        }
+      }
+    }
+  };
+  for(const s of subs){const m=/_(\d+)_(\d+)$/.exec(s[1]);if(!m)continue;const u=+m[1],st=+m[2];if(st!==1)continue;if(u===0||u===unit)draw(s);}
+  if(!subs.length)draw(sym);
+}
+
+function renderSch(root,fileName){
+  const groups={frame:[],sym:[],wire:[],label:[],text:[],sheet:[]};
+  const bbox={minx:Infinity,miny:Infinity,maxx:-Infinity,maxy:-Infinity};
+  const grow=(x,y)=>{if(x<bbox.minx)bbox.minx=x;if(x>bbox.maxx)bbox.maxx=x;if(y<bbox.miny)bbox.miny=y;if(y>bbox.maxy)bbox.maxy=y;};
+  // paper
+  const paper=ch(root,'paper');let pw=297,ph=210;
+  if(paper){if(paper[1]==='User'){pw=N(paper[2]);ph=N(paper[3]);}else{const d=PAPER[paper[1]]||[297,210];pw=d[0];ph=d[1];if(paper.includes('portrait')){pw=d[1];ph=d[0];}}}
+  groups.frame.push(`<rect x="0" y="0" width="${pw}" height="${ph}" fill="none" stroke="${SCH.frame}" stroke-width="0.4"/><rect x="10" y="10" width="${pw-20}" height="${ph-20}" fill="none" stroke="${SCH.frame}" stroke-width="0.15"/>`);
+  grow(0,0);grow(pw,ph);
+  // lib symbols
+  const libs={};const ls=ch(root,'lib_symbols');if(ls)for(const s of chs(ls,'symbol'))libs[s[1]]=s;
+  // symbol instances
+  let symCount=0;
+  for(const inst of chs(root,'symbol')){symCount++;
+    const libId=(ch(inst,'lib_id')||[])[1];const sym=libs[libId];const a=at(inst);const unit=N((ch(inst,'unit')||[,1])[1])||1;
+    const mir=(ch(inst,'mirror')||[])[1];
+    const props={};for(const p of chs(inst,'property'))props[p[1]]=p[2];
+    const body=[],pins=[];
+    if(sym)libGraphics(sym,unit,body,pins);
+    // transform: lib (x, y_up) → already flipped to (x, -y) in body; then mirror, rotate, translate
+    let tr=`translate(${f3(a.x)} ${f3(a.y)}) rotate(${-a.r})`;
+    if(mir==='x')tr+=' scale(1 -1)';else if(mir==='y')tr+=' scale(-1 1)';
+    const dnp=(ch(inst,'dnp')||[])[1]==='yes';
+    let s=`<g class="sch-sym clickable${dnp?' dim':''}" data-ref="${esc(props.Reference||'')}" data-val="${esc(props.Value||'')}" data-fp="${esc(props.Footprint||'')}" data-lib="${esc(libId||'')}"><g transform="${tr}">${body.join('')}</g>`;
+    // properties
+    for(const p of chs(inst,'property')){const fo=fontOf(p);if(fo.hide)continue;if(p[2]===''||p[1].startsWith('ki_'))continue;const h=ch(p,'hide');if(h&&h[1]==='yes')continue;
+      const pa=at(p);const col=p[1]==='Reference'?SCH.ref:p[1]==='Value'?SCH.val:SCH.text;
+      s+=textSvg(p[2],pa.x,pa.y,fo.size,pa.r+a.r,fo.just,`fill="${col}"`);grow(pa.x,pa.y);}
+    if(dnp)s+=`<g transform="${tr}"><line x1="-2" y1="-2" x2="2" y2="2" stroke="#c00" stroke-width="0.3"/><line x1="-2" y1="2" x2="2" y2="-2" stroke="#c00" stroke-width="0.3"/></g>`;
+    s+='</g>';groups.sym.push(s);grow(a.x-5,a.y-5);grow(a.x+5,a.y+5);
+  }
+  // wires / buses / polylines
+  for(const n of root){ if(!Array.isArray(n))continue;const k=n[0];
+    if(k==='wire'||k==='bus'||k==='polyline'){const p=pts(n);if(p.length<2)continue;p.forEach(q=>grow(q[0],q[1]));const w=strokeW(n,0)||(k==='bus'?0.3048:0.1524);
+      groups.wire.push(`<polyline points="${poly(p)}" stroke="${k==='bus'?SCH.bus:k==='polyline'?SCH.text:SCH.wire}" stroke-width="${f3(w)}" fill="none" stroke-linecap="round" stroke-linejoin="round"/>`);}
+    else if(k==='bus_entry'){const a=at(n),sz=ch(n,'size');groups.wire.push(`<line x1="${f3(a.x)}" y1="${f3(a.y)}" x2="${f3(a.x+N(sz[1]))}" y2="${f3(a.y+N(sz[2]))}" stroke="${SCH.bus}" stroke-width="0.1524"/>`);}
+    else if(k==='junction'){const a=at(n);let d=N((ch(n,'diameter')||[])[1]);if(!d)d=0.9144;groups.wire.push(`<circle cx="${f3(a.x)}" cy="${f3(a.y)}" r="${f3(d/2)}" fill="${SCH.junction}"/>`);}
+    else if(k==='no_connect'){const a=at(n);groups.wire.push(`<g stroke="${SCH.nc}" stroke-width="0.1524"><line x1="${f3(a.x-0.635)}" y1="${f3(a.y-0.635)}" x2="${f3(a.x+0.635)}" y2="${f3(a.y+0.635)}"/><line x1="${f3(a.x-0.635)}" y1="${f3(a.y+0.635)}" x2="${f3(a.x+0.635)}" y2="${f3(a.y-0.635)}"/></g>`);}
+    else if(k==='label'||k==='global_label'||k==='hierarchical_label'||k==='netclass_flag'){
+      const a=at(n),fo=fontOf(n);const str=n[1];const col=k==='label'?SCH.label:k==='global_label'?SCH.glabel:SCH.hlabel;
+      let just=fo.just.slice();
+      if(k==='label'){ // text slightly above the wire endpoint
+        const ang=((a.r%360)+360)%360;const off=0.25;let ox=0,oy=0;
+        if(ang===0){ox=off;oy=-off;}else if(ang===180){ox=-off;oy=-off;}else if(ang===90){ox=-off;oy=-off;}else{ox=-off;oy=off;}
+        if(!just.length)just=['left','bottom'];
+        groups.label.push(textSvg(str,a.x+ox,a.y+oy,fo.size,a.r,just,`fill="${col}"`));
+      } else {
+        // box shape: draw a flag pointing to the anchor
+        const h=fo.size*1.6,len=fo.size*0.75*String(str).length+fo.size*1.2;const ang=((a.r%360)+360)%360;
+        const flag=k==='global_label'?`M0 0 L${f3(h/2)} ${f3(-h/2)} L${f3(len)} ${f3(-h/2)} L${f3(len)} ${f3(h/2)} L${f3(h/2)} ${f3(h/2)} Z`:`M0 0 L${f3(h/2)} ${f3(-h/2)} L${f3(h)} 0 L${f3(h/2)} ${f3(h/2)} Z`;
+        groups.label.push(`<path transform="translate(${f3(a.x)} ${f3(a.y)}) rotate(${-ang})" d="${flag}" stroke="${col}" stroke-width="0.15" fill="${k==='global_label'?'#fffbe6':'none'}"/>`);
+        const off=k==='global_label'?h*0.65:h*1.25;
+        const dx=off*Math.cos(ang*Math.PI/180),dy=-off*Math.sin(ang*Math.PI/180);
+        if(!just.length)just=[ang===180||ang===270?'right':'left'];
+        just=just.filter(j=>j!=='top'&&j!=='bottom');
+        groups.label.push(textSvg(str,a.x+dx,a.y+dy,fo.size,a.r,just,`fill="${col}"`));
+      }
+      grow(a.x,a.y);
+    }
+    else if(k==='text'){const a=at(n),fo=fontOf(n);groups.text.push(textSvg(n[1],a.x,a.y,fo.size,a.r,fo.just.length?fo.just:['left','bottom'],`fill="${SCH.text}"`));grow(a.x,a.y);}
+    else if(k==='text_box'){const a=at(n),sz=ch(n,'size'),fo=fontOf(n);groups.text.push(`<rect x="${f3(a.x)}" y="${f3(a.y)}" width="${sz[1]}" height="${sz[2]}" fill="none" stroke="${SCH.text}" stroke-width="0.15"/>`+textSvg(n[1],a.x+0.5,a.y+0.5,fo.size,0,['left','top'],`fill="${SCH.text}"`));}
+    else if(k==='rectangle'||k==='circle'||k==='arc'){ /* graphic shapes on sheet */
+      const w=strokeW(n,0.1524)||0.1524;
+      if(k==='rectangle'){const s0=ch(n,'start'),e=ch(n,'end');groups.text.push(`<rect x="${f3(Math.min(N(s0[1]),N(e[1])))}" y="${f3(Math.min(N(s0[2]),N(e[2])))}" width="${f3(Math.abs(N(e[1])-N(s0[1])))}" height="${f3(Math.abs(N(e[2])-N(s0[2])))}" fill="none" stroke="${SCH.text}" stroke-width="${f3(w)}"/>`);}
+      else if(k==='circle'){const c=ch(n,'center'),r=N((ch(n,'radius')||[])[1]);groups.text.push(`<circle cx="${c[1]}" cy="${c[2]}" r="${f3(r)}" fill="none" stroke="${SCH.text}" stroke-width="${f3(w)}"/>`);}
+      else{const s0=ch(n,'start'),m=ch(n,'mid'),e=ch(n,'end');groups.text.push(`<polyline points="${poly(arcPoints(N(s0[1]),N(s0[2]),N(m[1]),N(m[2]),N(e[1]),N(e[2])))}" fill="none" stroke="${SCH.text}" stroke-width="${f3(w)}"/>`);}
+    }
+    else if(k==='sheet'){const a=at(n),sz=ch(n,'size');const props={};for(const p of chs(n,'property'))props[p[1]]=p;
+      const nm=props.Sheetname?props.Sheetname[2]:'',file=props.Sheetfile?props.Sheetfile[2]:'';
+      let s=`<g class="clickable sheet" data-file="${esc(file)}" data-name="${esc(nm)}"><rect x="${f3(a.x)}" y="${f3(a.y)}" width="${sz[1]}" height="${sz[2]}" fill="${SCH.sheetfill}" stroke="${SCH.sheet}" stroke-width="0.2"/>`;
+      for(const key of['Sheetname','Sheetfile']){const p=props[key];if(!p)continue;const fo=fontOf(p);const pa=at(p);s+=textSvg((key==='Sheetfile'?'File: ':'')+p[2],pa.x,pa.y,fo.size,pa.r,fo.just.length?fo.just:['left','bottom'],`fill="${SCH.sheet}"`);}
+      for(const p of chs(n,'pin')){const pa=at(p),fo=fontOf(p);const ang=((pa.r%360)+360)%360;const h=fo.size;
+        s+=`<path transform="translate(${f3(pa.x)} ${f3(pa.y)}) rotate(${-ang})" d="M0 ${f3(-h/2)} L${f3(-h*0.6)} ${f3(-h/2)} L${f3(-h)} 0 L${f3(-h*0.6)} ${f3(h/2)} L0 ${f3(h/2)} Z" fill="#fffbe6" stroke="${SCH.hlabel}" stroke-width="0.12"/>`;
+        const off=h*1.2;const dx=-off*Math.cos(ang*Math.PI/180),dy=off*Math.sin(ang*Math.PI/180);
+        s+=textSvg(p[1],pa.x+dx,pa.y+dy,fo.size,pa.r,[ang===0?'right':ang===180?'left':ang===90?'right':'left'],`fill="${SCH.hlabel}"`);}
+      s+='</g>';groups.sheet.push(s);grow(a.x,a.y);grow(a.x+N(sz[1]),a.y+N(sz[2]));}
+  }
+  const order=['frame','sheet','sym','wire','label','text'];
+  return {kind:'sch',groups,order,bbox,layers:[],summary:`${symCount} symbols · ${chs(root,'wire').length} wires`,paper:{w:pw,h:ph}};
+}
+
+/* ---------------- App ---------------- */
+const $=id=>document.getElementById(id);
+const view=$('view'),tabsEl=$('tabs'),panel=$('panel'),status=$('status');
+const docs=[];let cur=-1;let vb={x:0,y:0,w:100,h:100};let flipped=false;const hidden=new Set();
+function setStatus(html){status.innerHTML=html;}
+function fmtBytes(b){return b>1e6?(b/1e6).toFixed(1)+' MB':(b/1e3).toFixed(0)+' kB';}
+
+async function addFiles(list){
+  $('busy').style.display='block';
+  await new Promise(r=>setTimeout(r,30));
+  for(const f of list){
+    try{
+      const text=typeof f.text==='function'?await f.text():f.text;
+      const name=f.name;
+      const t0=performance.now();
+      const root=parseSexp(text);
+      let doc;
+      if(root[0]==='kicad_pcb')doc=renderPcb(root);
+      else if(root[0]==='kicad_sch')doc=renderSch(root,name);
+      else{setStatus(`<b>${esc(name)}</b>: KiCad 파일이 아닙니다`);continue;}
+      doc.name=name;doc.size=text.length;doc.ms=performance.now()-t0;
+      const idx=docs.findIndex(d=>d.name===name);
+      if(idx>=0)docs[idx]=doc;else docs.push(doc);
+    }catch(e){console.error(e);setStatus(`<b>${esc(f.name)}</b> 읽기 실패: ${esc(e.message)}`);}
+  }
+  $('busy').style.display='none';
+  renderTabs();
+  if(docs.length){show(docs.length-1);}
+}
+function renderTabs(){
+  tabsEl.innerHTML='';
+  docs.forEach((d,i)=>{const b=document.createElement('button');b.className=(d.kind)+(i===cur?' on':'');b.textContent=d.name.replace(/\.kicad_(pcb|sch)$/,'');b.onclick=()=>show(i);tabsEl.appendChild(b);});
+}
+function show(i){
+  cur=i;const d=docs[i];renderTabs();
+  $('empty').style.display='none';
+  view.classList.toggle('sch',d.kind==='sch');
+  $('flipBtn').hidden=d.kind!=='pcb';$('layersBtn').hidden=d.kind!=='pcb';
+  if(d.kind==='pcb'&&!d.layerInit){d.layerInit=true;d.layers.forEach(l=>{if(DEFAULT_HIDDEN.test(l))hidden.add(d.name+'|'+l);});}
+  buildSvg();
+  fit();
+  setStatus(`<b>${esc(d.name)}</b> · ${d.summary} · ${fmtBytes(d.size)} · ${d.ms.toFixed(0)} ms`);
+  buildPanel();
+  tabsEl.children[i]&&tabsEl.children[i].scrollIntoView({inline:'nearest'});
+}
+function buildSvg(){
+  const d=docs[cur];
+  const order=d.kind==='pcb'&&flipped?d.flipped:d.order;
+  let s='';
+  for(const l of order){const vis=!hidden.has(d.name+'|'+l);s+=`<g data-layer="${esc(l)}" ${vis?'':'display="none"'}>${d.groups[l].join('')}</g>`;}
+  const tr=(d.kind==='pcb'&&flipped)?`scale(-1 1)`:'';
+  view.innerHTML=`<g id="root" transform="${tr}">${s}</g>`;
+}
+function fit(){
+  const d=docs[cur];const b=d.bbox;const W=view.clientWidth,H=view.clientHeight;
+  if(!W||!H){requestAnimationFrame(fit);return;}
+  let x0=b.minx,x1=b.maxx;if(d.kind==='pcb'&&flipped){x0=-b.maxx;x1=-b.minx;}
+  const bw=(x1-x0)||10,bh=(b.maxy-b.miny)||10,m=0.04;
+  const sc=Math.max(bw*(1+2*m)/W,bh*(1+2*m)/H);
+  vb={w:W*sc,h:H*sc,x:(x0+x1)/2-W*sc/2,y:(b.miny+b.maxy)/2-H*sc/2};
+  applyVb();
+}
+function applyVb(){view.setAttribute('viewBox',`${vb.x} ${vb.y} ${vb.w} ${vb.h}`);$('zoom').textContent=(view.clientWidth/vb.w*25.4/96).toFixed(2)+'×';}
+function buildPanel(){
+  const d=docs[cur];panel.innerHTML='';
+  if(d.kind!=='pcb'){panel.classList.remove('open');return;}
+  let h='<h2>레이어 <span style="font-weight:400;text-transform:none;letter-spacing:0">(색을 탭하면 그 레이어만)</span></h2><div class="row"><button id="allOn">모두</button><button id="cuOnly">Cu만</button></div>';
+  for(const l of d.layers.slice().reverse()){const vis=!hidden.has(d.name+'|'+l);h+=`<label><input type="checkbox" data-l="${esc(l)}" ${vis?'checked':''}><i style="background:${layerColor(l)}"></i>${esc(l)}</label>`;}
+  panel.innerHTML=h;
+  panel.querySelectorAll('input').forEach(c=>c.onchange=()=>{const k=d.name+'|'+c.dataset.l;if(c.checked)hidden.delete(k);else hidden.add(k);const g=view.querySelector(`g[data-layer="${CSS.escape(c.dataset.l)}"]`);if(g){if(c.checked)g.removeAttribute('display');else g.setAttribute('display','none');}});
+  panel.querySelectorAll('label i').forEach(sw=>sw.onclick=e=>{e.preventDefault();const only=sw.parentElement.querySelector('input').dataset.l;d.layers.forEach(l=>{if(l===only||l==='Edge.Cuts')hidden.delete(d.name+'|'+l);else hidden.add(d.name+'|'+l);});buildSvg();buildPanel();});
+  $('allOn').onclick=()=>{d.layers.forEach(l=>hidden.delete(d.name+'|'+l));buildSvg();buildPanel();};
+  $('cuOnly').onclick=()=>{d.layers.forEach(l=>{if(/\.Cu$|^Edge|^Vias|^Pads/.test(l))hidden.delete(d.name+'|'+l);else hidden.add(d.name+'|'+l);});buildSvg();buildPanel();};
+}
+$('file').onchange=e=>{addFiles([...e.target.files]);e.target.value='';};
+$('fit').onclick=()=>{if(cur>=0)fit();};
+$('flipBtn').onclick=()=>{flipped=!flipped;$('flipBtn').classList.toggle('on',flipped);buildSvg();fit();};
+$('layersBtn').onclick=()=>panel.classList.toggle('open');
+
+/* pan / zoom (pointer events: 1 finger pan, 2 finger pinch, wheel) */
+const main=$('main');const ptrs=new Map();let lastDist=0,lastMid=null,moved=false;
+function client2svg(cx,cy){const r=view.getBoundingClientRect();return[vb.x+(cx-r.left)/r.width*vb.w,vb.y+(cy-r.top)/r.height*vb.h];}
+function zoomAt(cx,cy,f){const[sx,sy]=client2svg(cx,cy);vb.w*=f;vb.h*=f;const[nx,ny]=client2svg(cx,cy);vb.x+=sx-nx;vb.y+=sy-ny;applyVb();}
+main.addEventListener('pointerdown',e=>{if(e.target.closest('#panel'))return;main.setPointerCapture(e.pointerId);ptrs.set(e.pointerId,{x:e.clientX,y:e.clientY});moved=false;if(ptrs.size===2){const[a,b]=[...ptrs.values()];lastDist=Math.hypot(a.x-b.x,a.y-b.y);lastMid=[(a.x+b.x)/2,(a.y+b.y)/2];}});
+main.addEventListener('pointermove',e=>{if(!ptrs.has(e.pointerId))return;const p=ptrs.get(e.pointerId);const r=view.getBoundingClientRect();
+  if(ptrs.size===1){const dx=e.clientX-p.x,dy=e.clientY-p.y;if(Math.abs(dx)+Math.abs(dy)>3)moved=true;vb.x-=dx/r.width*vb.w;vb.y-=dy/r.height*vb.h;applyVb();}
+  p.x=e.clientX;p.y=e.clientY;
+  if(ptrs.size===2){moved=true;const[a,b]=[...ptrs.values()];const dist=Math.hypot(a.x-b.x,a.y-b.y);const mid=[(a.x+b.x)/2,(a.y+b.y)/2];
+    if(lastDist>0)zoomAt(mid[0],mid[1],lastDist/dist);
+    if(lastMid){vb.x-=(mid[0]-lastMid[0])/r.width*vb.w;vb.y-=(mid[1]-lastMid[1])/r.height*vb.h;applyVb();}
+    lastDist=dist;lastMid=mid;}
+});
+const endPtr=e=>{ptrs.delete(e.pointerId);lastDist=0;lastMid=null;};
+main.addEventListener('pointerup',e=>{const wasTap=!moved&&ptrs.size===1;endPtr(e);if(wasTap)onTap(e);});
+main.addEventListener('pointercancel',endPtr);
+main.addEventListener('wheel',e=>{e.preventDefault();zoomAt(e.clientX,e.clientY,Math.exp(e.deltaY*0.0015));},{passive:false});
+main.addEventListener('dblclick',e=>zoomAt(e.clientX,e.clientY,0.5));
+
+/* tap: net highlight / part info / sheet navigation */
+let hlNet=null;
+function onTap(e){
+  const t=e.target.closest('.clickable');
+  if(!t){clearHl();return;}
+  if(t.classList.contains('sheet')){const f=t.dataset.file;const i=docs.findIndex(d=>d.name===f);if(i>=0)show(i);else setStatus(`시트 <b>${esc(t.dataset.name)}</b> → ${esc(f)} (아직 열지 않음: 파일 열기에서 추가)`);return;}
+  if(t.dataset.net!==undefined){const net=t.dataset.net;const fp=t.closest('.fp');clearHl();hlNet=net;
+    if(net)view.querySelectorAll(`[data-net="${CSS.escape(net)}"]`).forEach(el=>el.classList.add('hl'));
+    const cnt=net?view.querySelectorAll(`[data-net="${CSS.escape(net)}"]`).length:0;
+    setStatus((fp?`<b>${esc(fp.dataset.ref)}</b> ${esc(fp.dataset.val)} pad ${esc(t.dataset.pad)} · `:'')+(net?`net <b>${esc(net)}</b> (${cnt} items)`:'net 없음'));return;}
+  if(t.classList.contains('sch-sym')){clearHl();t.classList.add('hl');setStatus(`<b>${esc(t.dataset.ref)}</b> ${esc(t.dataset.val)} · ${esc(t.dataset.fp||t.dataset.lib)}`);return;}
+}
+function clearHl(){view.querySelectorAll('.hl').forEach(el=>el.classList.remove('hl'));hlNet=null;}
+
+/* drag & drop (desktop) */
+main.addEventListener('dragover',e=>{e.preventDefault();main.classList.add('drag');});
+main.addEventListener('dragleave',()=>main.classList.remove('drag'));
+main.addEventListener('drop',e=>{e.preventDefault();main.classList.remove('drag');addFiles([...e.dataTransfer.files]);});
+window.addEventListener('resize',()=>{if(cur>=0)applyVb();});
+
+/* ?f=a.kicad_sch,b.kicad_pcb  → fetch relative URLs (when hosted next to the files) */
+(async()=>{const q=new URLSearchParams(location.search).get('f');if(!q)return;const list=[];
+  for(const u of q.split(',')){try{const r=await fetch(u);if(!r.ok)throw new Error(r.status);list.push({name:u.split('/').pop(),text:await r.text()});}catch(e){setStatus(`불러오기 실패: ${esc(u)}`);}}
+  if(list.length)addFiles(list);})();
+</script>
