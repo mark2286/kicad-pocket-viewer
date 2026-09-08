@@ -56,7 +56,7 @@ text{font-family:Helvetica,Arial,"Noto Sans KR",sans-serif;pointer-events:none}
 <header>
   <h1>KiCad Pocket Viewer</h1>
   <label class="btn" for="file">파일 열기</label>
-  <input id="file" type="file" multiple accept=".kicad_pcb,.kicad_sch,.txt" hidden>
+  <input id="file" type="file" multiple hidden>
   <div id="tabs"></div>
   <button id="fit" title="화면 맞춤">맞춤</button>
   <button id="flipBtn" title="보드 뒤집기" hidden>뒤집기</button>
@@ -66,7 +66,7 @@ text{font-family:Helvetica,Arial,"Noto Sans KR",sans-serif;pointer-events:none}
   <svg id="view" xmlns="http://www.w3.org/2000/svg"></svg>
   <div id="empty">
     <p><strong>파일 열기</strong>를 눌러 <code>.kicad_sch</code> 또는 <code>.kicad_pcb</code> 파일을 선택하세요.<br>여러 파일을 한 번에 선택하면 탭으로 열립니다.</p>
-    <p>iPhone / iPad: 파일 앱(iCloud Drive 등)에서 선택. 한 손가락 이동, 두 손가락 확대. 패드·배선을 탭하면 net 이름이, 심볼을 탭하면 부품 정보가 아래에 표시됩니다.</p>
+    <p>iPhone / iPad: 파일 앱(iCloud Drive 등)에서 선택. 파일이 회색으로 보이면 iOS 버전을 업데이트하거나 확장자를 .txt로 바꿔 보세요. 한 손가락 이동, 두 손가락 확대. 패드·배선을 탭하면 net 이름이, 심볼을 탭하면 부품 정보가 아래에 표시됩니다.</p>
   </div>
   <div id="panel"></div>
   <div id="drop"></div>
@@ -430,12 +430,13 @@ const docs=[];let cur=-1;let vb={x:0,y:0,w:100,h:100};let flipped=false;const hi
 function setStatus(html){status.innerHTML=html;}
 function fmtBytes(b){return b>1e6?(b/1e6).toFixed(1)+' MB':(b/1e3).toFixed(0)+' kB';}
 
+function readFile(f){return new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result);r.onerror=()=>rej(r.error||new Error('read error'));r.readAsText(f);});}
 async function addFiles(list){
   $('busy').style.display='block';
   await new Promise(r=>setTimeout(r,30));
   for(const f of list){
     try{
-      const text=typeof f.text==='function'?await f.text():f.text;
+      const text=typeof f.text==='string'?f.text:await readFile(f);
       const name=f.name;
       const t0=performance.now();
       const root=parseSexp(text);
