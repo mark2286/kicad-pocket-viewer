@@ -372,7 +372,7 @@ function libGraphics(sym,unit,out,pinInfo){
       }
     }
   };
-  for(const s of subs){const m=/_(\d+)_(\d+)$/.exec(s[1]);if(!m)continue;const u=+m[1],st=+m[2];if(st!==1)continue;if(u===0||u===unit)draw(s);}
+  for(const s of subs){const m=/_(\d+)_(\d+)$/.exec(s[1]);if(!m)continue;const u=+m[1],st=+m[2];if(st>1)continue;if(u===0||u===unit)draw(s);}
   if(!subs.length)draw(sym);
 }
 
