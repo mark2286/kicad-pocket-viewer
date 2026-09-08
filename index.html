@@ -597,7 +597,7 @@ async function ghApi(path,raw){const r=await fetch('https://api.github.com'+path
   return raw?r.text():r.json();}
 let ghState=null;
 /* ---- GitHub 로그인 (OAuth; 토큰 교환은 Cloudflare Worker가 대신) ---- */
-const OAUTH={clientId:'__GITHUB_CLIENT_ID__',relay:'__OAUTH_RELAY_URL__'};
+const OAUTH={clientId:'Ov23livWW4PKFib2rMdn',relay:'https://kicad-viewer-auth.mark2286.workers.dev/'};
 const ghLogin=$('ghLogin'),ghLogout=$('ghLogout'),ghUser=$('ghUser'),ghRepos=$('ghRepos');
 const oauthReady=()=>OAUTH.clientId&&!OAUTH.clientId.startsWith('__')&&OAUTH.relay&&!OAUTH.relay.startsWith('__');
 const redirectUri=()=>location.origin+location.pathname;
