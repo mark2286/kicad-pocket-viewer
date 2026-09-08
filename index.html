@@ -58,6 +58,10 @@ text{font-family:Helvetica,Arial,"Noto Sans KR",sans-serif;pointer-events:none}
 #gh.open{display:flex}
 #gh .box{background:var(--bg2);border:1px solid var(--line);border-radius:12px;padding:16px;width:100%;max-width:520px;display:flex;flex-direction:column;gap:10px}
 #gh h2{margin:0;font-size:16px}
+#gh .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+#gh select{width:100%;font:inherit;padding:10px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--fg)}
+#gh details summary{cursor:pointer}
+#gh details input{margin-top:8px}
 #gh input[type=text],#gh input[type=password]{width:100%;font:inherit;padding:10px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--fg)}
 #gh .hint{color:var(--fg2);font-size:13px;line-height:1.5}
 #gh .files{display:flex;flex-direction:column;gap:2px;max-height:40vh;overflow:auto}
@@ -92,9 +96,11 @@ text{font-family:Helvetica,Arial,"Noto Sans KR",sans-serif;pointer-events:none}
   <div id="busy">읽는 중…</div>
   <div id="gh"><div class="box">
     <h2>GitHub 저장소에서 열기</h2>
-    <input type="text" id="ghUrl" placeholder="https://github.com/owner/repo/tree/main/KiCad" autocapitalize="off" autocorrect="off" spellcheck="false">
-    <input type="password" id="ghToken" placeholder="비공개 저장소용 토큰 (선택, 이 기기에만 저장)" autocapitalize="off">
-    <div class="hint">저장소 주소 또는 폴더 주소를 넣고 "목록"을 누르면 .kicad_sch / .kicad_pcb 파일을 찾아 보여줍니다. 비공개 저장소는 GitHub에서 발급한 fine-grained 토큰(Contents: Read)이 필요합니다.</div>
+    <div class="row" id="ghAuthRow"><button id="ghLogin" class="primary">GitHub로 로그인</button><span id="ghUser" class="hint" hidden></span><button id="ghLogout" hidden>로그아웃</button></div>
+    <select id="ghRepos" hidden></select>
+    <input type="text" id="ghUrl" placeholder="또는 주소 직접 입력: https://github.com/owner/repo/tree/main/KiCad" autocapitalize="off" autocorrect="off" spellcheck="false">
+    <details><summary class="hint">토큰을 직접 넣기 (로그인 대신)</summary><input type="password" id="ghToken" placeholder="Personal access token (이 기기에만 저장)" autocapitalize="off"></details>
+    <div class="hint">로그인하면 내 저장소 목록에서 고를 수 있고, 공개 저장소는 로그인 없이 주소만으로 열립니다. "목록"을 누르면 .kicad_sch / .kicad_pcb 파일을 찾아 보여줍니다.</div>
     <div class="files" id="ghFiles"></div>
     <div class="hint" id="ghMsg"></div>
     <div class="actions"><button id="ghClose">닫기</button><button id="ghList">목록</button><button id="ghOpen" class="primary" disabled>선택한 파일 열기</button></div>
@@ -586,11 +592,53 @@ function parseGhUrl(u){
   if(!m){const m2=/^([^\/\s]+)\/([^\/\s]+)(?:\/(.*))?$/.exec(u);if(!m2)return null;return{owner:m2[1],repo:m2[2],ref:'',path:m2[3]||''};}
   return{owner:m[1],repo:m[2],ref:m[3]||'',path:(m[4]||'').replace(/\/+$/,'')};
 }
-function ghHeaders(raw){const h={Accept:raw?'application/vnd.github.raw':'application/vnd.github+json'};const t=ghToken.value.trim();if(t)h.Authorization='Bearer '+t;return h;}
 async function ghApi(path,raw){const r=await fetch('https://api.github.com'+path,{headers:ghHeaders(raw)});
   if(!r.ok){let msg=r.status+' '+r.statusText;if(r.status===404)msg+=' (저장소가 없거나 비공개입니다. 토큰을 확인하세요)';if(r.status===403||r.status===429)msg+=' (요청 한도 초과. 토큰을 넣으면 한도가 늘어납니다)';throw new Error(msg);}
   return raw?r.text():r.json();}
 let ghState=null;
+/* ---- GitHub 로그인 (OAuth; 토큰 교환은 Cloudflare Worker가 대신) ---- */
+const OAUTH={clientId:'__GITHUB_CLIENT_ID__',relay:'__OAUTH_RELAY_URL__'};
+const ghLogin=$('ghLogin'),ghLogout=$('ghLogout'),ghUser=$('ghUser'),ghRepos=$('ghRepos');
+const oauthReady=()=>OAUTH.clientId&&!OAUTH.clientId.startsWith('__')&&OAUTH.relay&&!OAUTH.relay.startsWith('__');
+const redirectUri=()=>location.origin+location.pathname;
+function activeToken(){let t='';try{t=localStorage.getItem('gh.oauth')||'';}catch(e){}return t||ghToken.value.trim();}
+function ghHeaders(raw){const h={Accept:raw?'application/vnd.github.raw':'application/vnd.github+json'};const t=activeToken();if(t)h.Authorization='Bearer '+t;return h;}
+async function refreshAuthUi(){
+  ghLogin.hidden=!oauthReady();
+  let t='';try{t=localStorage.getItem('gh.oauth')||'';}catch(e){}
+  if(!t){ghUser.hidden=true;ghLogout.hidden=true;ghRepos.hidden=true;return;}
+  try{const u=await ghApi('/user');ghUser.textContent=u.login+' 로그인됨';ghUser.hidden=false;ghLogout.hidden=false;ghLogin.hidden=true;loadRepos();}
+  catch(e){try{localStorage.removeItem('gh.oauth');}catch(_){}ghUser.hidden=true;ghLogout.hidden=true;ghRepos.hidden=true;ghMsg.textContent='로그인이 만료되었습니다. 다시 로그인하세요.';}
+}
+async function loadRepos(){
+  ghRepos.innerHTML='<option value="">내 저장소 불러오는 중…</option>';ghRepos.hidden=false;
+  try{let all=[];for(let page=1;page<=5;page++){const r=await ghApi(`/user/repos?per_page=100&sort=pushed&affiliation=owner,collaborator,organization_member&page=${page}`);all=all.concat(r);if(r.length<100)break;}
+    ghRepos.innerHTML='<option value="">내 저장소에서 선택…</option>'+all.map(r=>`<option value="${esc(r.html_url)}">${esc(r.full_name)}${r.private?' 🔒':''}</option>`).join('');
+    let last='';try{last=localStorage.getItem('gh.url')||'';}catch(e){}if(last)ghRepos.value=last;
+  }catch(e){ghRepos.innerHTML='<option value="">저장소 목록 실패: '+esc(e.message)+'</option>';}
+}
+ghRepos.onchange=()=>{if(ghRepos.value){ghUrl.value=ghRepos.value;$('ghList').click();}};
+ghLogin.onclick=()=>{
+  const state=Math.random().toString(36).slice(2)+Date.now().toString(36);
+  try{sessionStorage.setItem('gh.state',state);}catch(e){}
+  const u=new URL('https://github.com/login/oauth/authorize');
+  u.searchParams.set('client_id',OAUTH.clientId);u.searchParams.set('redirect_uri',redirectUri());u.searchParams.set('scope','repo');u.searchParams.set('state',state);
+  location.href=u.toString();
+};
+ghLogout.onclick=()=>{try{localStorage.removeItem('gh.oauth');}catch(e){}refreshAuthUi();};
+(async()=>{ // 로그인 후 돌아온 경우: code → token 교환
+  const q=new URLSearchParams(location.search);const code=q.get('code');if(!code)return refreshAuthUi();
+  let st='';try{st=sessionStorage.getItem('gh.state')||'';}catch(e){}
+  history.replaceState(null,'',redirectUri());
+  gh.classList.add('open');
+  if(st&&q.get('state')!==st){ghMsg.textContent='로그인 확인값이 일치하지 않습니다. 다시 시도하세요.';return refreshAuthUi();}
+  ghMsg.textContent='GitHub 로그인 처리 중…';
+  try{const r=await fetch(OAUTH.relay,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({code,redirect_uri:redirectUri()})});
+    const d=await r.json();if(!r.ok||!d.access_token)throw new Error(d.error||r.status);
+    try{localStorage.setItem('gh.oauth',d.access_token);}catch(e){}
+    ghMsg.textContent='';await refreshAuthUi();
+  }catch(e){ghMsg.textContent='로그인 실패: '+e.message;refreshAuthUi();}
+})();
 $('ghList').onclick=async()=>{
   const info=parseGhUrl(ghUrl.value);ghFiles.innerHTML='';ghOpen.disabled=true;
   if(!info){ghMsg.textContent='GitHub 주소 형식이 아닙니다. 예: https://github.com/owner/repo';return;}
