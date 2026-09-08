@@ -75,7 +75,7 @@ text{font-family:Helvetica,Arial,"Noto Sans KR",sans-serif;pointer-events:none}
   <h1>KiCad Pocket Viewer</h1>
   <button id="openBtn">파일 열기</button>
   <button id="ghBtn">GitHub</button>
-  <input id="file" type="file" multiple style="position:absolute;width:1px;height:1px;opacity:0;pointer-events:none">
+  <input id="file" type="file" style="position:absolute;width:1px;height:1px;opacity:0;pointer-events:none">
   <div id="tabs"></div>
   <button id="fit" title="화면 맞춤">맞춤</button>
   <button id="flipBtn" title="보드 뒤집기" hidden>뒤집기</button>
@@ -84,7 +84,7 @@ text{font-family:Helvetica,Arial,"Noto Sans KR",sans-serif;pointer-events:none}
 <main id="main">
   <svg id="view" xmlns="http://www.w3.org/2000/svg"></svg>
   <div id="empty">
-    <p><strong>파일 열기</strong>를 눌러 <code>.kicad_sch</code> 또는 <code>.kicad_pcb</code> 파일을 선택하세요.<br>여러 파일을 한 번에 선택하면 탭으로 열립니다. <strong>GitHub</strong>를 누르면 저장소에서 바로 불러옵니다.</p>
+    <p><strong>파일 열기</strong>를 눌러 <code>.kicad_sch</code> 또는 <code>.kicad_pcb</code> 파일을 선택하세요.<br>파일은 한 번에 하나씩 선택하며, 계속 열면 탭으로 쌓입니다. <strong>GitHub</strong>를 누르면 저장소에서 바로 불러옵니다.</p>
     <p>iPhone / iPad: 파일 앱(iCloud Drive 등)에서 선택. 파일이 회색으로 보이면 iOS 버전을 업데이트하거나 확장자를 .txt로 바꿔 보세요. 한 손가락 이동, 두 손가락 확대. 패드·배선을 탭하면 net 이름이, 심볼을 탭하면 부품 정보가 아래에 표시됩니다.</p>
   </div>
   <div id="panel"></div>
