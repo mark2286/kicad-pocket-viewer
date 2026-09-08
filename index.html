@@ -418,14 +418,14 @@ function renderSch(root,fileName){
         groups.label.push(textSvg(str,a.x+ox,a.y+oy,fo.size,a.r,just,`fill="${col}"`));
       } else {
         // box shape: draw a flag pointing to the anchor
-        const h=fo.size*1.6,len=fo.size*0.95*String(str).length+fo.size*1.4;const ang=((a.r%360)+360)%360;
+        const h=fo.size*1.6,len=fo.size*0.98*String(str).length+fo.size*1.6;const ang=((a.r%360)+360)%360;
         const flag=k==='global_label'?`M0 0 L${f3(h/2)} ${f3(-h/2)} L${f3(len)} ${f3(-h/2)} L${f3(len)} ${f3(h/2)} L${f3(h/2)} ${f3(h/2)} Z`:`M0 0 L${f3(h/2)} ${f3(-h/2)} L${f3(h)} 0 L${f3(h/2)} ${f3(h/2)} Z`;
         groups.label.push(`<path transform="translate(${f3(a.x)} ${f3(a.y)}) rotate(${-ang})" d="${flag}" stroke="${col}" stroke-width="0.15" fill="${k==='global_label'?'#fffbe6':'none'}"/>`);
+        // text sits along the label direction, starting just past the arrow tip; justify computed from angle (file justify is in the rotated frame)
         const off=k==='global_label'?h*0.65:h*1.25;
         const dx=off*Math.cos(ang*Math.PI/180),dy=-off*Math.sin(ang*Math.PI/180);
-        if(!just.length)just=[ang===180||ang===270?'right':'left'];
-        just=just.filter(j=>j!=='top'&&j!=='bottom');
-        groups.label.push(textSvg(str,a.x+dx,a.y+dy,fo.size,a.r,just,`fill="${col}"`));
+        const tj=(ang===180||ang===270)?['right']:['left'];
+        groups.label.push(textSvg(str,a.x+dx,a.y+dy,fo.size,(ang===90||ang===270)?90:0,tj,`fill="${col}"`));
       }
       grow(a.x,a.y);
     }
