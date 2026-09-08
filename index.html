@@ -1,4 +1,8 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
 <meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <title>KiCad Pocket Viewer</title>
 <meta name="apple-mobile-web-app-capable" content="yes">
 <style>
@@ -8,18 +12,18 @@
 }
 *{box-sizing:border-box}
 html,body{height:100%;margin:0;background:var(--bg);color:var(--fg);
-  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Noto Sans KR",sans-serif;font-size:14px;
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Noto Sans KR",sans-serif;font-size:15px;
   overscroll-behavior:none;-webkit-user-select:none;user-select:none}
 #app{display:flex;flex-direction:column;height:100%;height:100dvh}
-header{display:flex;align-items:center;gap:8px;padding:6px 10px;background:var(--bg2);border-bottom:1px solid var(--line);flex:0 0 auto}
+header{display:flex;align-items:center;gap:8px;padding:8px 10px;padding-top:calc(8px + env(safe-area-inset-top));background:var(--bg2);border-bottom:1px solid var(--line);flex:0 0 auto}
 header h1{font-size:15px;font-weight:600;margin:0 6px 0 0;white-space:nowrap;letter-spacing:.01em}
-button,label.btn{background:var(--bg);color:var(--fg);border:1px solid var(--line);border-radius:6px;padding:6px 11px;font:inherit;cursor:pointer;white-space:nowrap}
+button,label.btn{background:var(--bg);color:var(--fg);border:1px solid var(--line);border-radius:8px;padding:9px 13px;min-height:40px;font:inherit;cursor:pointer;white-space:nowrap}
 button:active,label.btn:active{background:var(--line)}
 button.on{border-color:var(--accent);color:var(--accent)}
 button:focus-visible,label.btn:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
 #tabs{display:flex;gap:4px;overflow-x:auto;flex:1 1 auto;scrollbar-width:none}
 #tabs::-webkit-scrollbar{display:none}
-#tabs button{border-radius:999px;padding:5px 12px;color:var(--fg2)}
+#tabs button{border-radius:999px;padding:7px 14px;color:var(--fg2)}
 #tabs button.on{background:var(--bg);color:var(--accent)}
 #tabs button.pcb::before{content:"PCB ";font-size:10px;letter-spacing:.08em;opacity:.7}
 #tabs button.sch::before{content:"SCH ";font-size:10px;letter-spacing:.08em;opacity:.7}
@@ -32,12 +36,12 @@ svg#view.sch{background:var(--sch-canvas)}
 #panel{position:absolute;top:8px;right:8px;max-height:calc(100% - 16px);overflow:auto;background:rgba(38,43,52,.94);backdrop-filter:blur(8px);border:1px solid var(--line);border-radius:10px;padding:8px 10px;min-width:170px;display:none}
 #panel.open{display:block}
 #panel h2{font-size:11px;text-transform:uppercase;letter-spacing:.1em;color:var(--fg2);margin:4px 0 6px;font-weight:600}
-#panel label{display:flex;align-items:center;gap:8px;padding:5px 2px;cursor:pointer;font-size:13px}
-#panel label i{width:12px;height:12px;border-radius:3px;flex:0 0 auto;border:1px solid rgba(255,255,255,.15)}
-#panel input{accent-color:var(--accent);margin:0}
+#panel label{display:flex;align-items:center;gap:10px;padding:8px 2px;cursor:pointer;font-size:15px}
+#panel label i{width:18px;height:18px;border-radius:3px;flex:0 0 auto;border:1px solid rgba(255,255,255,.15)}
+#panel input{accent-color:var(--accent);margin:0;width:20px;height:20px}
 #panel .row{display:flex;gap:6px;margin:4px 0 8px}
-#panel .row button{flex:1;padding:4px 6px;font-size:12px}
-footer{display:flex;align-items:center;gap:10px;padding:5px 10px;background:var(--bg2);border-top:1px solid var(--line);font-size:12px;color:var(--fg2);flex:0 0 auto;min-height:28px}
+#panel .row button{flex:1;padding:6px 8px;font-size:14px}
+footer{display:flex;align-items:center;gap:10px;padding:8px 12px calc(8px + env(safe-area-inset-bottom));background:var(--bg2);border-top:1px solid var(--line);font-size:14px;color:var(--fg2);flex:0 0 auto;min-height:28px}
 footer #status{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-variant-numeric:tabular-nums}
 footer #status b{color:var(--fg);font-weight:600}
 #drop{position:absolute;inset:0;border:2px dashed var(--accent);background:rgba(79,179,255,.08);display:none;pointer-events:none}
@@ -50,12 +54,27 @@ text{font-family:Helvetica,Arial,"Noto Sans KR",sans-serif;pointer-events:none}
 .sch-sym rect,.sch-sym polygon,.sch-sym polyline,.sch-sym circle,.sch-sym path{vector-effect:none}
 #view .clickable{cursor:pointer}
 @media (max-width:600px){header h1{display:none}}
+#gh{position:absolute;inset:0;background:rgba(0,0,0,.45);display:none;align-items:flex-start;justify-content:center;padding:16px;overflow:auto}
+#gh.open{display:flex}
+#gh .box{background:var(--bg2);border:1px solid var(--line);border-radius:12px;padding:16px;width:100%;max-width:520px;display:flex;flex-direction:column;gap:10px}
+#gh h2{margin:0;font-size:16px}
+#gh input[type=text],#gh input[type=password]{width:100%;font:inherit;padding:10px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--fg)}
+#gh .hint{color:var(--fg2);font-size:13px;line-height:1.5}
+#gh .files{display:flex;flex-direction:column;gap:2px;max-height:40vh;overflow:auto}
+#gh .files label{display:flex;gap:10px;align-items:center;padding:8px 4px;border-bottom:1px solid var(--line)}
+#gh .files input{width:20px;height:20px;accent-color:var(--accent);margin:0}
+#gh .files small{color:var(--fg2);margin-left:auto;white-space:nowrap}
+#gh .actions{display:flex;gap:8px;justify-content:flex-end}
+#gh button.primary{border-color:var(--accent);background:var(--accent);color:#08131d;font-weight:600}
 </style>
+</head>
+<body>
 
 <div id="app">
 <header>
   <h1>KiCad Pocket Viewer</h1>
   <label class="btn" for="file">파일 열기</label>
+  <button id="ghBtn">GitHub</button>
   <input id="file" type="file" multiple hidden>
   <div id="tabs"></div>
   <button id="fit" title="화면 맞춤">맞춤</button>
@@ -65,12 +84,21 @@ text{font-family:Helvetica,Arial,"Noto Sans KR",sans-serif;pointer-events:none}
 <main id="main">
   <svg id="view" xmlns="http://www.w3.org/2000/svg"></svg>
   <div id="empty">
-    <p><strong>파일 열기</strong>를 눌러 <code>.kicad_sch</code> 또는 <code>.kicad_pcb</code> 파일을 선택하세요.<br>여러 파일을 한 번에 선택하면 탭으로 열립니다.</p>
+    <p><strong>파일 열기</strong>를 눌러 <code>.kicad_sch</code> 또는 <code>.kicad_pcb</code> 파일을 선택하세요.<br>여러 파일을 한 번에 선택하면 탭으로 열립니다. <strong>GitHub</strong>를 누르면 저장소에서 바로 불러옵니다.</p>
     <p>iPhone / iPad: 파일 앱(iCloud Drive 등)에서 선택. 파일이 회색으로 보이면 iOS 버전을 업데이트하거나 확장자를 .txt로 바꿔 보세요. 한 손가락 이동, 두 손가락 확대. 패드·배선을 탭하면 net 이름이, 심볼을 탭하면 부품 정보가 아래에 표시됩니다.</p>
   </div>
   <div id="panel"></div>
   <div id="drop"></div>
   <div id="busy">읽는 중…</div>
+  <div id="gh"><div class="box">
+    <h2>GitHub 저장소에서 열기</h2>
+    <input type="text" id="ghUrl" placeholder="https://github.com/owner/repo/tree/main/KiCad" autocapitalize="off" autocorrect="off" spellcheck="false">
+    <input type="password" id="ghToken" placeholder="비공개 저장소용 토큰 (선택, 이 기기에만 저장)" autocapitalize="off">
+    <div class="hint">저장소 주소 또는 폴더 주소를 넣고 "목록"을 누르면 .kicad_sch / .kicad_pcb 파일을 찾아 보여줍니다. 비공개 저장소는 GitHub에서 발급한 fine-grained 토큰(Contents: Read)이 필요합니다.</div>
+    <div class="files" id="ghFiles"></div>
+    <div class="hint" id="ghMsg"></div>
+    <div class="actions"><button id="ghClose">닫기</button><button id="ghList">목록</button><button id="ghOpen" class="primary" disabled>선택한 파일 열기</button></div>
+  </div></div>
 </main>
 <footer><span id="status">파일이 열려 있지 않습니다</span><span id="zoom"></span></footer>
 </div>
@@ -390,7 +418,7 @@ function renderSch(root,fileName){
         groups.label.push(textSvg(str,a.x+ox,a.y+oy,fo.size,a.r,just,`fill="${col}"`));
       } else {
         // box shape: draw a flag pointing to the anchor
-        const h=fo.size*1.6,len=fo.size*0.75*String(str).length+fo.size*1.2;const ang=((a.r%360)+360)%360;
+        const h=fo.size*1.6,len=fo.size*0.95*String(str).length+fo.size*1.4;const ang=((a.r%360)+360)%360;
         const flag=k==='global_label'?`M0 0 L${f3(h/2)} ${f3(-h/2)} L${f3(len)} ${f3(-h/2)} L${f3(len)} ${f3(h/2)} L${f3(h/2)} ${f3(h/2)} Z`:`M0 0 L${f3(h/2)} ${f3(-h/2)} L${f3(h)} 0 L${f3(h/2)} ${f3(h/2)} Z`;
         groups.label.push(`<path transform="translate(${f3(a.x)} ${f3(a.y)}) rotate(${-ang})" d="${flag}" stroke="${col}" stroke-width="0.15" fill="${k==='global_label'?'#fffbe6':'none'}"/>`);
         const off=k==='global_label'?h*0.65:h*1.25;
@@ -542,8 +570,58 @@ main.addEventListener('dragleave',()=>main.classList.remove('drag'));
 main.addEventListener('drop',e=>{e.preventDefault();main.classList.remove('drag');addFiles([...e.dataTransfer.files]);});
 window.addEventListener('resize',()=>{if(cur>=0)applyVb();});
 
+/* ---------------- GitHub loader ---------------- */
+const gh=$('gh'),ghUrl=$('ghUrl'),ghToken=$('ghToken'),ghFiles=$('ghFiles'),ghMsg=$('ghMsg'),ghOpen=$('ghOpen');
+try{ghUrl.value=localStorage.getItem('gh.url')||'';ghToken.value=localStorage.getItem('gh.token')||'';}catch(e){}
+$('ghBtn').onclick=()=>{gh.classList.add('open');};
+$('ghClose').onclick=()=>gh.classList.remove('open');
+gh.addEventListener('click',e=>{if(e.target===gh)gh.classList.remove('open');});
+function parseGhUrl(u){
+  u=u.trim().replace(/^git@github\.com:/,'https://github.com/').replace(/\.git$/,'');
+  const m=/^(?:https?:\/\/)?(?:www\.)?github\.com\/([^\/\s]+)\/([^\/\s#?]+)(?:\/(?:tree|blob)\/([^\/\s]+)(?:\/(.*))?)?/.exec(u);
+  if(!m){const m2=/^([^\/\s]+)\/([^\/\s]+)(?:\/(.*))?$/.exec(u);if(!m2)return null;return{owner:m2[1],repo:m2[2],ref:'',path:m2[3]||''};}
+  return{owner:m[1],repo:m[2],ref:m[3]||'',path:(m[4]||'').replace(/\/+$/,'')};
+}
+function ghHeaders(raw){const h={Accept:raw?'application/vnd.github.raw':'application/vnd.github+json'};const t=ghToken.value.trim();if(t)h.Authorization='Bearer '+t;return h;}
+async function ghApi(path,raw){const r=await fetch('https://api.github.com'+path,{headers:ghHeaders(raw)});
+  if(!r.ok){let msg=r.status+' '+r.statusText;if(r.status===404)msg+=' (저장소가 없거나 비공개입니다. 토큰을 확인하세요)';if(r.status===403||r.status===429)msg+=' (요청 한도 초과. 토큰을 넣으면 한도가 늘어납니다)';throw new Error(msg);}
+  return raw?r.text():r.json();}
+let ghState=null;
+$('ghList').onclick=async()=>{
+  const info=parseGhUrl(ghUrl.value);ghFiles.innerHTML='';ghOpen.disabled=true;
+  if(!info){ghMsg.textContent='GitHub 주소 형식이 아닙니다. 예: https://github.com/owner/repo';return;}
+  try{localStorage.setItem('gh.url',ghUrl.value.trim());localStorage.setItem('gh.token',ghToken.value.trim());}catch(e){}
+  ghMsg.textContent='파일 목록을 가져오는 중…';
+  try{
+    if(!info.ref){const meta=await ghApi(`/repos/${info.owner}/${info.repo}`);info.ref=meta.default_branch;}
+    const tree=await ghApi(`/repos/${info.owner}/${info.repo}/git/trees/${encodeURIComponent(info.ref)}?recursive=1`);
+    const prefix=info.path?info.path+'/':'';
+    const files=(tree.tree||[]).filter(t=>t.type==='blob'&&/\.kicad_(sch|pcb)$/.test(t.path)&&(t.path.startsWith(prefix)||t.path===info.path));
+    ghState={info,files};
+    if(!files.length){ghMsg.textContent='KiCad 파일(.kicad_sch / .kicad_pcb)을 찾지 못했습니다.'+(tree.truncated?' (저장소가 너무 커서 목록이 잘렸습니다. 폴더 주소를 지정해 보세요)':'');return;}
+    files.sort((a,b)=>a.path.localeCompare(b.path));
+    ghFiles.innerHTML=files.map((f,i)=>`<label><input type="checkbox" data-i="${i}" ${/\.kicad_sch$/.test(f.path)||files.length<=6?'checked':''}><span>${esc(f.path.slice(prefix.length))}</span><small>${fmtBytes(f.size||0)}</small></label>`).join('');
+    ghMsg.textContent=`${files.length}개 파일 · 브랜치 ${info.ref}`;ghOpen.disabled=false;
+  }catch(e){ghMsg.textContent='불러오기 실패: '+e.message;}
+};
+ghOpen.onclick=async()=>{
+  if(!ghState)return;const sel=[...ghFiles.querySelectorAll('input:checked')].map(c=>ghState.files[+c.dataset.i]);
+  if(!sel.length){ghMsg.textContent='파일을 하나 이상 선택하세요.';return;}
+  const list=[];const{owner,repo,ref}=ghState.info;
+  for(const f of sel){ghMsg.textContent=`받는 중: ${f.path}`;
+    try{const text=await ghApi(`/repos/${owner}/${repo}/contents/${f.path.split('/').map(encodeURIComponent).join('/')}?ref=${encodeURIComponent(ref)}`,true);list.push({name:f.path.split('/').pop(),text});}
+    catch(e){ghMsg.textContent=`${f.path} 실패: ${e.message}`;return;}}
+  gh.classList.remove('open');ghMsg.textContent='';
+  await addFiles(list);
+};
+/* ?repo=https://github.com/owner/repo/tree/main/KiCad  → 자동으로 목록을 열어 줌 */
+(()=>{const q=new URLSearchParams(location.search).get('repo');if(!q)return;ghUrl.value=q;gh.classList.add('open');$('ghList').click();})();
+
 /* ?f=a.kicad_sch,b.kicad_pcb  → fetch relative URLs (when hosted next to the files) */
 (async()=>{const q=new URLSearchParams(location.search).get('f');if(!q)return;const list=[];
   for(const u of q.split(',')){try{const r=await fetch(u);if(!r.ok)throw new Error(r.status);list.push({name:u.split('/').pop(),text:await r.text()});}catch(e){setStatus(`불러오기 실패: ${esc(u)}`);}}
   if(list.length)addFiles(list);})();
 </script>
+
+</body>
+</html>
