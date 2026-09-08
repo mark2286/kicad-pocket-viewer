@@ -73,9 +73,9 @@ text{font-family:Helvetica,Arial,"Noto Sans KR",sans-serif;pointer-events:none}
 <div id="app">
 <header>
   <h1>KiCad Pocket Viewer</h1>
-  <label class="btn" for="file">파일 열기</label>
+  <button id="openBtn">파일 열기</button>
   <button id="ghBtn">GitHub</button>
-  <input id="file" type="file" multiple hidden>
+  <input id="file" type="file" multiple style="position:absolute;width:1px;height:1px;opacity:0;pointer-events:none">
   <div id="tabs"></div>
   <button id="fit" title="화면 맞춤">맞춤</button>
   <button id="flipBtn" title="보드 뒤집기" hidden>뒤집기</button>
@@ -465,13 +465,14 @@ async function addFiles(list){
   for(const f of list){
     try{
       const text=typeof f.text==='string'?f.text:await readFile(f);
+      if(!text||!text.length){setStatus(`<b>${esc(f.name)}</b>: 내용이 비어 있습니다. iCloud에서 아직 내려받지 않은 파일이면 파일 앱에서 한 번 열어 내려받은 뒤 다시 시도하세요.`);continue;}
       const name=f.name;
       const t0=performance.now();
       const root=parseSexp(text);
       let doc;
       if(root[0]==='kicad_pcb')doc=renderPcb(root);
       else if(root[0]==='kicad_sch')doc=renderSch(root,name);
-      else{setStatus(`<b>${esc(name)}</b>: KiCad 파일이 아닙니다`);continue;}
+      else{setStatus(`<b>${esc(name)}</b>: KiCad 6 이상 형식이 아닙니다 (첫 토큰: ${esc(String(root[0]).slice(0,20))}, ${fmtBytes(text.length)})`);continue;}
       doc.name=name;doc.size=text.length;doc.ms=performance.now()-t0;
       const idx=docs.findIndex(d=>d.name===name);
       if(idx>=0)docs[idx]=doc;else docs.push(doc);
@@ -526,7 +527,10 @@ function buildPanel(){
   $('allOn').onclick=()=>{d.layers.forEach(l=>hidden.delete(d.name+'|'+l));buildSvg();buildPanel();};
   $('cuOnly').onclick=()=>{d.layers.forEach(l=>{if(/\.Cu$|^Edge|^Vias|^Pads/.test(l))hidden.delete(d.name+'|'+l);else hidden.add(d.name+'|'+l);});buildSvg();buildPanel();};
 }
-$('file').onchange=e=>{addFiles([...e.target.files]);e.target.value='';};
+$('openBtn').onclick=()=>$('file').click();
+$('file').onchange=e=>{const fs=[...e.target.files];setStatus(fs.length?`${fs.length}개 파일 선택됨, 읽는 중…`:'선택된 파일이 없습니다');addFiles(fs);e.target.value='';};
+window.addEventListener('error',e=>setStatus('오류: '+esc(e.message||String(e))));
+window.addEventListener('unhandledrejection',e=>setStatus('오류: '+esc(e.reason&&e.reason.message||String(e.reason))));
 $('fit').onclick=()=>{if(cur>=0)fit();};
 $('flipBtn').onclick=()=>{flipped=!flipped;$('flipBtn').classList.toggle('on',flipped);buildSvg();fit();};
 $('layersBtn').onclick=()=>panel.classList.toggle('open');
